@@ -1,0 +1,248 @@
+---
+title: "PCA_NBA"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+
+```{r}
+knitr::opts_chunk$set(cache = FALSE)
+```
+
+### Main steps of a PCA analysis
+
+1. Determine whether we should use correlation matrix or covariance matrix?
+2. Determine the number of PCs for subsequent analysis, what are the criteria for making the decision?
+3. 	Interpret the output of PCA outputs
+-	Eigen values ( of standard deviation), what does it represent?
+-	Percentage of variance explained
+-	Eigenvectors, what does it represents?
+-	Contribution of variables for the PCs. 
+-	Interpret the meaning of each component by the correlation between PCs and original variables. 
+4.	How to interpret the plot based on the scores of the first two components?
+
+
+## Step 0, Data input and exploratory analysis
+
+
+```{r, echo=TRUE}
+
+library(tidyverse)
+library(readr)
+
+# Upload the merged webscraping data
+nba <-read_csv("merged_data.csv")
+
+view(nba)
+```
+
+
+```{r, data check, echo=TRUE}
+
+head(nba)
+summary(nba)
+
+
+# variables to be included in the analysis
+nbapc<-nba[,2:46]
+
+# Correlation table
+round(cor(nbapc) ,2)
+
+
+# Correlation heatmap
+sports_corr <- round(cor(nbapc, use = "complete.obs"), 2) %>%
+  reshape2::melt()
+
+sports_corr %>%
+  ggplot(aes(Var1, Var2, fill = value)) +
+  geom_tile() +
+  geom_text(aes(label = value), color = "white", size = 2.2) +
+  coord_fixed() +
+  scale_fill_gradient2(low = "#E69F00",
+                       mid = "#56B4E9",
+                       high = "#009E73") +
+  theme(axis.text.x = element_text(angle = 45,
+                                   hjust = 1)) +
+  labs(x = "", y = "",
+       fill = "corr")
+```
+## Step 1, Decide to use Correlation Matrix or Covariance Matrix; Conduct  PCA, Summary outputs; 
+
+```{R, echo = TRUE}
+# Decision 1. Conduct a PCA analysis using correlation matrix
+# reasons for choosing correlation based analysis: the interested is  the relationship among variables; 
+#the absolute magnitude of the varaibels are not important
+pc.nba <- princomp(nbapc, cor=TRUE)
+
+summary(pc.nba)
+# Information we can extract from this part of ouput
+# a. the proportion of variance explained by each PC (second row)
+# b. The cumulative proportion (third row), for example, first two components explain 77.6% of total variance. 
+# c. standard deviation ( first row, the square of it is the eigen value (and the variance of the first PC)
+
+```
+## Step 2, to determin the number of PCs 
+- Keiser's rule, Eigen values greater than 1
+  - 10 principle components
+- 85% of variance explained by the first few PCs. 
+  - 7 princple components
+- Scree plot
+
+
+```{r, echo =TRUE}
+
+# scree plot - note the default is a barchart
+screeplot(pc.nba,type='l',main='Screeplot for nba data') #screeplot with dots and lines
+abline(1,0,col='red',lty=2,lwd=3) #horizontal line at 1
+
+nba.eigenvalues <- pc.nba$sdev^2
+print(nba.eigenvalues)
+print(nba.eigenvalues/45)
+```
+
+
+## Step 3, Interpret the output of PCA outputs
+
+Find the resutls to answer the following questions. 
+-	What do eigen values represent?   
+- Find Percentage of variance explained.
+-	What do eigenvectors represent?  
+   (Contribution of variables for the PCs.)
+-	Interpret the meaning of each component by the correlation between PCs and original variables. 
+
+```{r, echo =TRUE}
+
+nba.eigenvectors <- pc.nba$loadings
+nba.eigenvalues <- pc.nba$sdev^2
+
+#Eigen vectors are the weights for calculating PCs. 
+# Note if the value is less than 0.05, it will not be printed.
+# Eigen vectors also indicate the contribution of a variance to each PC. a higher value indicate higher contribution.  For example bot.cannine comtribute more to PC1 than bottom.incisor (0.391 vs 0.168)
+nba.eigenvectors
+#Eigen values are the variance of each PC
+nba.eigenvalues     
+# Note sum of the eigen values equals to the number of varibles, it is also the trace of the correlation matrix
+sum(nba.eigenvalues)
+
+
+```
+- to interpret the meaning of each component by the correlation between PCS and original variables. 
+
+```{r, echo =TRUE}
+# calculate the correlation
+
+# correlation between principle component and factors
+
+# make things a bit nicer
+round( cor(nba[,2:46], pc.nba$scores) , 3) # round the output
+
+```
+
+##Step 4.Interpret the plot based on the scores of the first two components.
+
+```{R, echo = TRUE}
+
+# scatterplot of scores with labels given by mammal in col 1
+#  type=n turns off the default symbol
+plot(pc.nba$scores, type='n',xlab="PC1(59%)", ylab="PC2(18%)", main = "PCA score plot" )
+points(pc.nba$scores,cex=0.5,col="red")   # this puts a small point at the center
+text(pc.nba$scores,label=nba[,1], cex=0.5, col='blue') #add tname to plot
+
+PCAloadings <- pc.nba$loadings
+plot(PCAloadings[,1:2],   # x and y data
+     pch=21,              # point shape
+     bg="black",          # point color
+     cex=1,               # point size
+     main="Loadings"      # title of plot
+)
+text(PCAloadings[,1:2],             # sets position of labels
+     labels=rownames(PCAloadings)   # print labels
+)
+
+```
+Labels in the above plots are overlapping
+
+```{R better plot, echo = TRUE}
+# Load the necessary libraries
+library(ggplot2)
+library(ggrepel)
+
+# Create dataset with the first two PCs
+df <- data.frame(x = pc.nba$scores[,1], y = pc.nba$scores[,2], label = nba[,1])
+
+df$label <- paste(df$Team, df$Year)
+
+# Create a scatter plot with labels
+ggplot(df, aes(x = x, y = y, label = label)) +
+  geom_point(color='red') +
+  geom_label_repel( 
+    nudge_x = 0.1, nudge_y = 0.1, 
+    size = 3, box.padding = unit(0.35, "lines")) +
+ ggtitle("PCA Score Plot") +  
+ theme(plot.title = element_text(hjust = 0.5))+
+ xlab("PC1 (59%)") +
+ ylab("PC2 (18%)")
+
+
+# Create a data frame with the loadings
+df <- data.frame(x = PCAloadings[, 1], y = PCAloadings[, 2], label = rownames(PCAloadings))
+
+# Create a scatterplot with labels
+ggplot(df, aes(x = x, y = y, label = label)) +
+  geom_point(shape = 21, fill = "blue", size = 3) +
+  geom_text_repel(size = 3, force = 5, nudge_x = 0.1, nudge_y = 0.1) +
+  ggtitle("Loadings") +  
+ theme(plot.title = element_text(hjust = 0.5))+
+ xlab("PC1 (59%)") +
+ ylab("PC2 (18%)")
+
+```
+
+
+```{R alternative method, echo = TRUE}
+#fancier plot using factoextra package
+# Load the necessary libraries
+# Load the necessary libraries
+library(factoextra)
+library(ggrepel)
+
+# Create a PCA object
+pca <- prcomp(nbapc, center = TRUE, scale. = TRUE)
+
+# Visualize the PCA loading variables
+fviz_pca_var(pca, col.var = "contrib", 
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), 
+             repel = TRUE)
+
+# Add the PCA score plot
+fviz_pca_biplot(pca, col.var = "contrib", 
+                     gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+                     geom = c("point"), 
+                     repel = TRUE)
+
+
+# Convert the data to numeric
+nbapc <- apply(nba[,2:11], 2, as.numeric)
+
+# Check the dimensions of pca$x and pca$rotation
+print(dim(pca$x))
+print(dim(pca$rotation))
+
+# Check if there are any missing or invalid values
+print(any(is.na(pca$x) | is.nan(pca$x)))
+print(any(is.na(pca$rotation) | is.nan(pca$rotation)))
+
+contrib <- abs(pca$x) %*% t(abs(pca$rotation))
+
+
+# Plot contribution of each variable to each principal component
+fviz_contrib(pca, choice = "var", axes = 1:2)
+
+
+```
+
+
+
+```
